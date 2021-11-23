@@ -107,3 +107,7 @@ const rangeGen = function* (from, to) {
 export function range(from, to) {
   return [...rangeGen(from, to)]
 }
+
+export function assertUnreachable(x: never): never {
+  throw new Error(`Didn't expect to get here with value ${x}`);
+}

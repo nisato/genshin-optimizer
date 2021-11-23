@@ -18,7 +18,7 @@ export function assign<Base, Value>(base: Base, path: Path<Base, Value>, value: 
 }
 
 type PartialPath<Base, Value> = {
-  [key in keyof Value]: PartialPath<Base, Value[key]> & (() => Path<Base, Value>)
-}
+  [key in keyof Value]: PartialPath<Base, Value[key]>
+} & (() => Path<Base, Value>)
 // eslint-disable-next-line
 export type Path<Base, Value> = string[]
