@@ -1,74 +1,36 @@
 import '../WorkerHack'
-import { PreprocessFormulas } from "../StatData";
-import { artifactSetPermutations, artifactPermutations, pruneArtifacts, calculateTotalBuildNumber } from "./Build"
-import { GetDependencies } from '../StatDependency';
-import Formula from '../Formula';
-import { ICachedArtifact, StatKey } from '../Types/artifact';
-import { ArtifactSetKey, SetNum, SlotKey } from '../Types/consts';
-import { Build, BuildRequest, SetFilter } from '../Types/Build';
-import { BonusStats, ICalculatedStats } from '../Types/stats';
-import { mergeStats } from '../Util/StatUtil';
+import { ICachedArtifact } from '../Types/artifact';
+import { allArtifactSets, ArtifactSetKey, SetNum, SlotKey } from '../Types/consts';
+import { iterate, prune, isSatisfiable } from './iterate'
+import { Formula } from '../Formula/type';
+import { constantFold } from '../Formula/optimization';
+import { process } from '../Formula/compute';
+import { SetFilter } from '../Types/Build';
+import { forEachFormulas, mapFormulas } from '../Formula/internal';
 
 const plotMaxPoints = 1500
 
-onmessage = async (e: { data: BuildRequest & { plotBase?: StatKey } }) => {
+onmessage = async ({ data }: { data: BuildRequest }) => {
   const t1 = performance.now()
-  const { splitArtifacts, setFilters, minFilters = {}, initialStats: stats, artifactSetEffects, maxBuildsToShow, optimizationTarget, plotBase } = e.data
+  const { splitArtifacts, minFilters, maxBuildsToShow, optimizationTarget, plotBase } = data
+  const setFilters = new Map(data.setFilters.flatMap(({ key, num }) => key ? [[key, num] as const] : []))
 
-  let target: (stats) => number, targetKeys: string[]
-  if (typeof optimizationTarget === "string") {
-    target = (stats) => stats[optimizationTarget]
-    targetKeys = [optimizationTarget]
-  } else {
-    const targetFormula = await Formula.get(optimizationTarget)
-    if (typeof targetFormula === "function")
-      [target, targetKeys] = targetFormula(stats)
-    else {
-      postMessage({ progress: 0, timing: 0 }, undefined as any)
-      postMessage({ builds: [], timing: 0 }, undefined as any)
-      return
-    }
-    if (targetKeys.length === 1 && !plotBase) {
-      // CAUTION: This optimization works only with monotonic dependencies
-      const key = targetKeys[0]
-      target = (stats) => stats[key]
-    }
-  }
+  const { formulas, thresholds } = prepareFormula(constantFold([optimizationTarget, ...minFilters.map(({ formula }) => formula), ...(plotBase ? [plotBase] : [])]), setFilters)
+  const sortingFormula = plotBase ? formulas.slice(0, -1) : formulas
+  const minimum = [-Infinity, ...minFilters.map(({ value }) => value)]
+  const compute = process(formulas)
 
-  const artifactSetBySlot = Object.fromEntries(Object.entries(splitArtifacts).map(([key, artifacts]) =>
-    [key, new Set(artifacts.map(artifact => artifact.setKey))]
-  ))
-  // modifierStats contains all modifiers that are applicable to the current build
-  const modifierStats: BonusStats = {}
-  Object.entries(artifactSetEffects).forEach(([set, effects]) =>
-    Object.entries(effects).filter(([setNum, stats]) =>
-      ("modifiers" in stats) && canApply(set, parseInt(setNum) as SetNum, artifactSetBySlot, setFilters)
-    ).forEach(bonus => mergeStats(modifierStats, bonus[1]))
-  )
-  mergeStats(modifierStats, { modifiers: stats.modifiers ?? {} })
+  const pruned = prune(data.splitArtifacts, sortingFormula, setFilters, thresholds, maxBuildsToShow)
 
-  const dependencies = GetDependencies(stats, modifierStats.modifiers, [...targetKeys, ...Object.keys(minFilters), ...(plotBase ? [plotBase] : [])]) as StatKey[]
-  const oldCount = calculateTotalBuildNumber(splitArtifacts, setFilters)
+  // TODO: old count & new count
 
-  let prunedArtifacts = splitArtifacts, newCount = oldCount
-
-  { // Prune artifact with strictly inferior (relevant) stats.
-    // Don't prune artifact sets that are filtered
-    const alwaysAccepted = setFilters.map(set => set.key) as any
-
-    prunedArtifacts = Object.fromEntries(Object.entries(splitArtifacts).map(([key, values]) =>
-      [key, pruneArtifacts(values, artifactSetEffects, new Set(dependencies), maxBuildsToShow, new Set(alwaysAccepted))]))
-    newCount = calculateTotalBuildNumber(prunedArtifacts, setFilters)
-  }
-
-  let { initialStats, formula } = PreprocessFormulas(dependencies, stats)
-  let buildCount = 0, skipped = oldCount - newCount
-  let builds: Build[] = [], threshold = -Infinity
+  let buildCount = 0, skipped = 0
+  let builds: { value: number, ids: string[] }[] = [], threshold = -Infinity
   const plotDataMap: Dict<string, number> = {}
   let bucketSize = 0.01
 
   const cleanupBuilds = () => {
-    builds.sort((a, b) => (b.buildFilterVal - a.buildFilterVal))
+    builds.sort((a, b) => (b.value - a.value))
     builds.splice(maxBuildsToShow)
   }
 
@@ -85,31 +47,29 @@ onmessage = async (e: { data: BuildRequest & { plotBase?: StatKey } }) => {
     }
   }
 
-  const callback = (accu: StrictDict<SlotKey, ICachedArtifact>, stats: ICalculatedStats) => {
+  const plotBaseIndex = minimum.length
+
+  iterate(pruned, setFilters, (ids, stats) => {
     if (!(++buildCount % 10000)) {
       if (builds.length > 10000) {
         cleanupBuilds()
-        threshold = builds[builds.length - 1].buildFilterVal
+        threshold = builds[builds.length - 1].value
       }
       cleanupPlots()
       postMessage({ progress: buildCount, timing: performance.now() - t1, skipped }, undefined as any)
     }
 
-    formula(stats)
-    if (Object.entries(minFilters).some(([key, minimum]) => stats[key] < minimum)) return
-    const buildFilterVal = target(stats)
+    const values = compute(path => stats[path[0] as any])
+    if (minimum.some((min, i) => min > values[i])) return
 
     if (plotBase) {
-      const index = Math.round(stats[plotBase] / bucketSize)
-      plotDataMap[index] = Math.max(buildFilterVal, plotDataMap[index] ?? -Infinity)
+      const index = Math.round(values[plotBaseIndex] / bucketSize)
+      plotDataMap[index] = Math.max(values[0], plotDataMap[index] ?? -Infinity)
     }
 
-    if (buildFilterVal >= threshold)
-      builds.push({ buildFilterVal, artifacts: { ...accu } })
-  }
-
-  for (const artifactsBySlot of artifactSetPermutations(prunedArtifacts, setFilters))
-    artifactPermutations(initialStats, artifactsBySlot, artifactSetEffects, callback)
+    if (values[0] >= threshold)
+      builds.push({ value: values[0], ids })
+  })
 
   cleanupBuilds()
   cleanupPlots()
@@ -122,12 +82,48 @@ onmessage = async (e: { data: BuildRequest & { plotBase?: StatKey } }) => {
       .sort((a, b) => a.plotBase - b.plotBase)
     : undefined
 
+  const artifactMap = new Map(Object.values(splitArtifacts).flatMap(arts => arts.map(art => [art.id, art] as const)))
+
   postMessage({ progress: buildCount, timing: t2 - t1, skipped }, undefined as any)
-  postMessage({ builds, plotData, timing: t2 - t1, skipped }, undefined as any)
+  postMessage({
+    builds: builds.map(({ value, ids }) => ({
+      buildFilterVal: value,
+      artifacts: ids.map(id => artifactMap.get(id)!),
+    })), plotData, timing: t2 - t1, skipped
+  }, undefined as any)
 }
 
-function canApply(set: ArtifactSetKey, num: SetNum, setBySlot: Dict<SlotKey, Set<ArtifactSetKey>>, filters: SetFilter): boolean {
-  const otherNum = filters.reduce((accu, { key, num }) => key === set ? accu : accu + num, 0)
-  const artNum = Object.values(setBySlot).filter(sets => sets.has(set)).length
-  return otherNum + num <= 5 && num <= artNum
+export function prepareFormula(formulas: Formula[], setsToKeep: Map<ArtifactSetKey, number>): { formulas: Formula[], thresholds: Map<ArtifactSetKey, Set<number>> } {
+  const thresholds = new Map<ArtifactSetKey, Set<number>>()
+  formulas = mapFormulas(formulas, f => {
+    if (f.action === "read") {
+      // We have nothing to apply non-artifact values at this point.
+      if (f.path[0] !== "art") return { action: "const", value: 0 }
+      return { action: "read", path: f.path.slice(1) }
+    } else if (f.action === "threshold_add") {
+      const [value, threshold, _] = f.dependencies
+      if (value.action === "read" && threshold.action === "const") {
+        const set = value.path[0] as any
+        if (allArtifactSets.includes(set)) {
+          if (!isSatisfiable(new Map([[set, threshold.value]]), setsToKeep))
+            return { action: "const", value: 0 }
+
+          if (!thresholds.has(set)) thresholds.set(set, new Set())
+          thresholds.get(set)!.add(threshold.value)
+        }
+      }
+    }
+    return f
+  }, f => f)
+
+  return { formulas, thresholds }
+}
+
+export interface BuildRequest {
+  splitArtifacts: StrictDict<SlotKey, ICachedArtifact[]>
+  setFilters: SetFilter
+  minFilters: { formula: Formula, value: number }[],
+  maxBuildsToShow: number,
+  optimizationTarget: Formula,
+  plotBase?: Formula
 }

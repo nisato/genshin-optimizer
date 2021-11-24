@@ -177,7 +177,8 @@ function deduplicate(formulas: Formula[], state: { progress: boolean }): Formula
   return formulas
 }
 
-function constantFold(formulas: Formula[]): Formula[] {
+/** Apply `ReadFormula` AND remove all `ContextFormula` */
+export function constantFold(formulas: Formula[]): Formula[] {
   const readFormulas: FormulaContext = {}
   const contexts = new Map<number, Context>()
   const prevContexts = new Map<number, number>()
