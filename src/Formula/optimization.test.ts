@@ -2,9 +2,9 @@ import { constant } from "./internal"
 import { optimize } from "./optimization"
 import { makeReaders, max, min, prod, sum, todo } from "./utils"
 
-const cInner = { a: todo, b: todo, c: todo } as const
+const cInner = { a: "unique", b: "unique", c: "unique" } as const
 const context = { a: cInner, b: cInner, c: cInner } as const
-const cReaders = makeReaders(context, "sum")
+const cReaders = makeReaders(context)
 
 describe("optimization", () => {
   test("flatten same formula", () => {

@@ -212,6 +212,11 @@ export function applyRead(formulas: Formula[], bottomUpMap: (formula: Formula, o
 
         if (!dependencies || dependencies.length === 0)
           break
+        if (formula.accumulation === "unique") {
+          if (dependencies.length > 1)
+            throw new Error("Duplicate entries in unique read")
+          return [dependencies[0], contextId]
+        }
 
         return [{ ...formula, action: formula.accumulation, dependencies }, contextId]
       }

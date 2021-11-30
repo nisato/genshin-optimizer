@@ -1,6 +1,6 @@
 
 import { objectFromKeyMap } from "../Util/Util"
-import type { CommutativeMonoidActions, ComputeFormula, Context, ContextFormula, Formula, FormulaContext, Info, Reader, SubscriptFormula } from "./type"
+import type { CommutativeMonoidActions, ComputeFormula, Context, ContextFormula, Formula, Info, ReaderSpec, ReaderSpecNode, ReadFormula, SubscriptFormula } from "./type"
 
 export const todo: Formula = { action: "const", value: NaN }
 
@@ -39,10 +39,10 @@ export function res(base: number | Formula): ComputeFormula {
   return { action: "res", dependencies: intoDependencies([base]) }
 }
 
-export function makeReaders<T extends FormulaContext | Formula>(context: T, accumulation: CommutativeMonoidActions, prefix: string[] = []): Reader<T> {
-  return context.action
-    ? { action: "read", accumulation, path: prefix } as any
-    : objectFromKeyMap(Object.keys(context), key => makeReaders(context[key], accumulation, [...prefix, key])) as any
+export function makeReaders<T extends ReaderSpecNode>(context: T, prefix: string[] = []): ReaderSpec<T, ReadFormula> {
+  return typeof context === "string"
+    ? { action: "read", accumulation: context, path: prefix }
+    : objectFromKeyMap(Object.keys(context) as string[], key => makeReaders(context[key], [...prefix, key])) as any
 }
 export function context(baseFormula: Formula, contexts: Context[]): ContextFormula {
   return { action: "context", baseFormula, contexts }

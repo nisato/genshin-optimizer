@@ -2,9 +2,9 @@ import { mapContextualFormulas as mapFormulas } from "./internal"
 import { Formula } from "./type"
 import { sum, todo, prod, makeReaders } from "./utils"
 
-const cInner = { a: todo, b: todo, c: todo } as const
+const cInner = { a: "unique", b: "unique", c: "unique" } as const
 const context = { a: cInner, b: cInner, c: cInner } as const
-const cReaders = makeReaders(context, "sum")
+const cReaders = makeReaders(context)
 
 describe("internal `mapFormulas`", () => {
   test("Access order", () => {

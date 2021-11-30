@@ -1,7 +1,7 @@
 import { finiteDifference } from "./difference"
 import { frac, makeReaders, max, min, prod, res, sum, threshold_add, todo } from "./utils"
 
-const cInner = { a: todo, b: todo, c: todo } as const
+const cInner = { a: "unique", b: "unique", c: "unique" } as const
 const context = { a: cInner, b: cInner, c: cInner } as const
 const cReaders = makeReaders(context)
 

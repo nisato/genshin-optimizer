@@ -1,12 +1,12 @@
 import '../WorkerHack'
 import { ICachedArtifact } from '../Types/artifact';
-import { allArtifactSets, ArtifactSetKey, SetNum, SlotKey } from '../Types/consts';
+import { allArtifactSets, ArtifactSetKey, SlotKey } from '../Types/consts';
 import { iterate, prune, isSatisfiable } from './iterate'
 import { Formula } from '../Formula/type';
 import { constantFold } from '../Formula/optimization';
 import { process } from '../Formula/compute';
 import { SetFilter } from '../Types/Build';
-import { forEachFormulas, mapFormulas } from '../Formula/internal';
+import { mapFormulas } from '../Formula/internal';
 
 const plotMaxPoints = 1500
 
@@ -97,9 +97,9 @@ export function prepareFormula(formulas: Formula[], setsToKeep: Map<ArtifactSetK
   const thresholds = new Map<ArtifactSetKey, Set<number>>()
   formulas = mapFormulas(formulas, f => {
     if (f.action === "read") {
-      // We have nothing to apply non-artifact values at this point.
-      if (f.path[0] !== "art") return { action: "const", value: 0 }
-      return { action: "read", path: f.path.slice(1) }
+      // We have nothing to apply non-generation values at this point.
+      if (f.path[0] !== "generation") return { action: "const", value: 0 }
+      return { action: "read", accumulation: "unique", path: f.path.slice(1) }
     } else if (f.action === "threshold_add") {
       const [value, threshold, _] = f.dependencies
       if (value.action === "read" && threshold.action === "const") {

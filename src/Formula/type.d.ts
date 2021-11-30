@@ -11,9 +11,15 @@ export interface FormulaContext {
   action?: never
   [key: string]: FormulaContext | Formula
 }
-export type Reader<T extends FormulaContext | Formula> = T extends Formula ? ReadFormula : {
-  [Key in keyof T]: Reader<T[Key]>
+
+interface ReaderSpecInternal {
+  action?: never
+  [key: string]: ReaderSpecNode | CommutativeMonoidActions | "unique"
 }
+export type ReaderSpecNode = ReaderSpecInternal | CommutativeMonoidActions | "unique"
+export type ReaderSpec<T extends ReaderSpecNode, X> = T extends ReaderSpecInternal ? {
+  [Key in keyof T]: ReaderSpec<T[Key], X>
+} : X
 
 interface FormulaBase {
   info?: Info
@@ -37,7 +43,7 @@ export interface Constant extends FormulaBase {
 export interface ReadFormula extends FormulaBase {
   action: "read"
   path: Path<FormulaContext, Formula | undefined>
-  accumulation: CommutativeMonoidActions
+  accumulation: CommutativeMonoidActions | "unique"
 
   info?: never
   baseFormula?: never
