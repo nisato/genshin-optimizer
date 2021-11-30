@@ -1,4 +1,4 @@
-import { Formula } from "./type"
+import { Formula, Info } from "./type"
 
 export function forEachFormulas(formulas: Formula[], topDown: (formula: Formula) => void, bottomUp: (formula: Formula) => void) {
   const visiting = new Set<Formula>(), visited = new Set<Formula>()
@@ -128,8 +128,8 @@ export function mapContextualFormulas(formulas: Formula[], topDownMap: (formula:
 
 type ContextID = number
 
-export function constant(value: number): Formula {
-  return { action: "const", value }
+export function constant(value: number, info?: Info): Formula {
+  return { action: "const", value, info }
 }
 
 function arrayEqual<T>(a: T[] | undefined, b: T[] | undefined): boolean {

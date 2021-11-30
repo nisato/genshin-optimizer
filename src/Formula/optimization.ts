@@ -177,9 +177,8 @@ function deduplicate(formulas: Formula[], state: { progress: boolean }): Formula
   return formulas
 }
 
-/** Apply `ReadFormula` AND remove all `ContextFormula` */
-export function constantFold(formulas: Formula[]): Formula[] {
-  const readFormulas: FormulaContext = {}
+/** Apply all `ReadFormula` with corresponding `Context` information with an option for bottom-up mapping afterward */
+export function applyRead(formulas: Formula[], bottomUpMap: (formula: Formula, orig: Formula) => Formula): Formula[] {
   const contexts = new Map<number, Context>()
   const prevContexts = new Map<number, number>()
   const nextContexts = new Map<number, Map<Context, number>>()
@@ -219,7 +218,14 @@ export function constantFold(formulas: Formula[]): Formula[] {
       }
     }
     return [formula, contextId]
-  }, formula => {
+  }, bottomUpMap)
+}
+
+/** Apply `ReadFormula`, remove all `ContextFormula` and replace all known values with a constant */
+export function constantFold(formulas: Formula[]): Formula[] {
+  const readFormulas: FormulaContext = {}
+
+  return applyRead(formulas, formula => {
     const { action } = formula
     switch (action) {
       case "const": return formula
@@ -232,7 +238,7 @@ export function constantFold(formulas: Formula[]): Formula[] {
       case "subscript":
         const baseFormula = formula.baseFormula
         if (baseFormula.action === "const")
-          return constant(formula.list[baseFormula.value])
+          return constant(formula.list[baseFormula.value], formula.info)
         return formula
       case "threshold_add":
         const [value, threshold, addition] = formula.dependencies

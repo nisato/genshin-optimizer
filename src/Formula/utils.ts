@@ -1,5 +1,5 @@
 
-import type { FormulaContext, Formula, Reader, Context } from "./type"
+import type { FormulaContext, Formula, Reader, Context, Info } from "./type"
 import { objectFromKeyMap } from "../Util/Util"
 
 export const todo: Formula = { action: "const", value: NaN }
@@ -28,12 +28,12 @@ export function frac(x: number | Formula, c: number | Formula): Formula {
 export function threshold_add(value: Formula, threshold: number | Formula, addition: number | Formula): Formula {
   return { action: "threshold_add", dependencies: intoDependencies([value, threshold, addition]) }
 }
-/**  */
-export function subscript(index: Formula, list: number[]): Formula {
+/** list[index] */
+export function subscript(index: Formula, list: number[], info?: Info): Formula {
   if (list.some((value, i, array) => i !== 0 && array[i - 1] > value))
-    // We use this fact primarily during the *pruning* process
+    // We use this fact primarily for *diffing*
     throw new Error("Formula Construction Failure: subscription list must be sorted in ascending order")
-  return { action: "subscript", baseFormula: index, list }
+  return { action: "subscript", baseFormula: index, list, info }
 }
 export function res(base: number | Formula): Formula {
   return { action: "res", dependencies: intoDependencies([base]) }

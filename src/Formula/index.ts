@@ -6,7 +6,7 @@ import type { Constant } from "./type"
 import { frac, makeReaders, prod, res, subscript, sum, todo, min, max } from "./utils"
 
 const allStats = [...allMainStatKeys, ...allSubstats] as const
-const unit: Constant = { action: "const", value: 1 }
+const unit: Constant = { action: "const", value: 1, info: { unit: "%" } }
 
 /**
  * All modifiable/named formulas and inputs.
