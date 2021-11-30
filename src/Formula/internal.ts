@@ -7,7 +7,7 @@ export function forEachFormulas(formulas: Formula[], topDown: (formula: Formula)
     if (visited.has(formula)) return
 
     if (visiting.has(formula)) {
-      console.error("Found cyclical dependency during formula traversing")
+      console.error("Found cyclical dependency during formula traversal")
       return
     }
     visiting.add(formula)

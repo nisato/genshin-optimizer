@@ -11,8 +11,8 @@ export interface FormulaContext {
   action?: never
   [key: string]: FormulaContext | Formula
 }
-export type Reader<T extends FormulaContext> = {
-  [Key in keyof T]: T[Key] extends FormulaContext ? Reader<T[Key]> : ReadFormula
+export type Reader<T extends FormulaContext | Formula> = T extends Formula ? ReadFormula : {
+  [Key in keyof T]: Reader<T[Key]>
 }
 
 interface FormulaBase {
@@ -36,7 +36,8 @@ export interface Constant extends FormulaBase {
 }
 export interface ReadFormula extends FormulaBase {
   action: "read"
-  path: Path<FormulaContext, Formula>
+  path: Path<FormulaContext, Formula | undefined>
+  accumulation: CommutativeMonoidActions
 
   info?: never
   baseFormula?: never
@@ -59,7 +60,7 @@ export interface ComputeFormula extends FormulaBase {
 
 export interface ContextFormula extends FormulaBase {
   action: "context"
-  context: Context
+  contexts: Context[]
 
   info?: never
   baseFormula: Formula

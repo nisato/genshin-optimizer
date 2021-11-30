@@ -31,7 +31,7 @@ const input = makeReaders({
     defRed: todo,
     dmgBonus: todo,
   }
-} as const)
+} as const, "sum")
 const output = {
   base: objectFromKeyMap(allStats, _ => todo),
   total: objectFromKeyMap(allStats, _ => todo),
@@ -47,7 +47,7 @@ const output = {
 }
 
 const { charInfo, weaponInfo, bonus, char, art, hit: hitInput, other: otherInput } = input
-const { base, total, trans, enemy, crit, hit } = makeReaders(output)
+const { base, total, trans, enemy, crit, hit } = makeReaders(output, "sum")
 
 // A little wasteful on `base` & `total` stats, but this is much easier to code & somewhat future proofing
 

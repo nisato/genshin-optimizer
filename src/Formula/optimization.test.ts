@@ -4,7 +4,7 @@ import { makeReaders, max, min, prod, sum, todo } from "./utils"
 
 const cInner = { a: todo, b: todo, c: todo } as const
 const context = { a: cInner, b: cInner, c: cInner } as const
-const cReaders = makeReaders(context)
+const cReaders = makeReaders(context, "sum")
 
 describe("optimization", () => {
   test("flatten same formula", () => {

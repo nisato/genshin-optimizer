@@ -177,44 +177,43 @@ function deduplicate(formulas: Formula[], state: { progress: boolean }): Formula
   return formulas
 }
 
-/** Apply all `ReadFormula` with corresponding `Context` information with an option for bottom-up mapping afterward */
+/**
+ * - Apply all `ReadFormula` with corresponding `Context` information
+ * - Remove all `ContextFormula`
+ * - Option bottom-up mapping afterward
+ */
 export function applyRead(formulas: Formula[], bottomUpMap: (formula: Formula, orig: Formula) => Formula): Formula[] {
-  const contexts = new Map<number, Context>()
-  const prevContexts = new Map<number, number>()
-  const nextContexts = new Map<number, Map<Context, number>>()
+  const contextsFromId = new Map<number, Context[]>()
+  const contextsById = new Map<Context[], number>()
 
   let currentMaxContextId = 1
 
   return mapContextualFormulas(formulas, (formula, contextId) => {
     switch (formula.action) {
       case "context": {
-        const { context, baseFormula } = formula
-        let nextContext = nextContexts.get(contextId)
-        if (!nextContext) {
-          nextContext = new Map()
-          nextContexts.set(contextId, nextContext)
-        }
+        const { contexts, baseFormula } = formula
 
-        let nextContextId = nextContext.get(context)
-        if (!nextContextId) {
-          nextContextId = ++currentMaxContextId
-          nextContext.set(context, nextContextId)
-          prevContexts.set(nextContextId, contextId)
-          contexts.set(nextContextId, context)
-        }
+        let nextContextId = contextsById.get(contexts)
+        if (nextContextId) return [baseFormula, nextContextId]
+
+        nextContextId = currentMaxContextId++
+        contextsFromId.set(nextContextId, contexts)
+        contextsById.set(contexts, nextContextId)
+
         return [baseFormula, nextContextId]
       }
       case "read": {
         const path = formula.path
-        let id = contextId
-        let context = contexts.get(id)
-        while (context) {
-          const value = resolve(context.formula, path)
-          if (value) return [value, prevContexts.get(id)!]
+        const contexts = contextsFromId.get(contextId)
+        const dependencies = contexts?.flatMap(context => {
+          const formula = resolve(context.formula, path)
+          return formula ? [formula] : []
+        })
 
-          id = prevContexts.get(id)!
-          context = contexts.get(id)
-        }
+        if (!dependencies || dependencies.length === 0)
+          break
+
+        return [{ ...formula, action: formula.accumulation, dependencies }, contextId]
       }
     }
     return [formula, contextId]
@@ -230,7 +229,7 @@ export function constantFold(formulas: Formula[]): Formula[] {
     switch (action) {
       case "const": return formula
       case "read":
-        let prev = resolve(readFormulas, formula.path)
+        const prev = resolve(readFormulas, formula.path)
         if (prev) return prev
         assign(readFormulas, formula.path, formula)
         return formula
