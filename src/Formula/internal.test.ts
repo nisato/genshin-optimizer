@@ -1,5 +1,5 @@
 import { mapContextualFormulas as mapFormulas } from "./internal"
-import { Formula } from "./type"
+import { Node } from "./type"
 import { sum, todo, prod, makeReaders } from "./utils"
 
 const cInner = { a: "unique", b: "unique", c: "unique" } as const
@@ -25,8 +25,8 @@ describe("internal `mapFormulas`", () => {
      */
 
     // Top-down with replace
-    const mockTopDown = jest.fn((x: Formula, contextId: number) => [x === r2 ? f2 : x, contextId] as [Formula, number])
-    const mockBottomUp = jest.fn((x: Formula, _: Formula) => x)
+    const mockTopDown = jest.fn((x: Node, contextId: number) => [x === r2 ? f2 : x, contextId] as [Node, number])
+    const mockBottomUp = jest.fn((x: Node, _: Node) => x)
 
     const result = mapFormulas([f1], mockTopDown, mockBottomUp)
     expect(result).toEqual([sum(r1, prod(r3, r4), r1)])
@@ -44,8 +44,8 @@ describe("internal `mapFormulas`", () => {
 
     const f1 = Object.freeze(sum(r1, r2, r3))
     const f2 = Object.freeze(sum(r4))
-    const mockTopDown = jest.fn((x: Formula, contextId: number) => [(x === r1 || x === r3) ? f2 : x, contextId] as [Formula, number])
-    const mockBottomUp = jest.fn((x: Formula, _: Formula) => x)
+    const mockTopDown = jest.fn((x: Node, contextId: number) => [(x === r1 || x === r3) ? f2 : x, contextId] as [Node, number])
+    const mockBottomUp = jest.fn((x: Node, _: Node) => x)
 
     const result = mapFormulas([f1], mockTopDown, mockBottomUp)
     expect(result).toEqual([sum(sum(r4), r2, sum(r4))])

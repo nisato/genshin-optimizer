@@ -1,6 +1,6 @@
 import { constant } from "./internal"
 import { optimize } from "./optimization"
-import { makeReaders, max, min, prod, sum, todo } from "./utils"
+import { makeReaders, max, min, prod, sum } from "./utils"
 
 const cInner = { a: "unique", b: "unique", c: "unique" } as const
 const context = { a: cInner, b: cInner, c: cInner } as const

@@ -2,8 +2,8 @@
 
 To add a new formula action:
 
-- Add its *name* to `Action` in `type.d.ts`, and
-- Add its computation to `allActions` in `optimization.ts` with the *name* as its key.
+- Add its *name* to `Operation` in `type.d.ts`, and
+- Add its computation to `allOperations` in `optimization.ts` with the *name* as its key.
 - Add appropriate entries in exhaustive switches, including in
   - `formulaString` in `debug.ts`,
   - `finiteDifference` in `difference.ts`, and
@@ -11,8 +11,8 @@ To add a new formula action:
 
 Additionally, some actions are commutative, associative, and has the identity elements. These actions can be furture optimized by the optimization routine by
 
-- Adding its name to `CommutativeMonoidAction` (instead of `Action`) in `type.d.ts`, and
-- Add the computation to `allCommutativeMonoidActions` (instead of `allActions`) in `optimization.ts`.
+- Adding its name to `CommutativeMonoidOperation` (instead of `Operation`) in `type.d.ts`, and
+- Add the computation to `allCommutativeMonoidOperations` (instead of `allOperations`) in `optimization.ts`.
 
 Care must be taken around constant folding (`constantFold` in `optimization.ts`). Correctly performing constant folding are important for correctness and proper termination of the calculation. If some values are not folded properly, the computation routine may incorrectly believe that the computation is not yet finalized. Make sure that all opportunities for folding are taken.
 

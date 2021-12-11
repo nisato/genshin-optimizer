@@ -1,27 +1,27 @@
 import { assertUnreachable } from "../Util/Util"
-import { Formula } from "./type"
+import { Node } from "./type"
 
-export function formulaString(formula: Formula): string {
-  const { action } = formula
-  switch (action) {
+export function formulaString(formula: Node): string {
+  const { operation } = formula
+  switch (operation) {
     case "const": return `${formula.value}`
     case "read": return `Read[${formula.path}]`
-    case "context": return `Context${formulaString(formula.baseFormula)}`
-    case "subscript": return `Lookup${formulaString(formula.baseFormula)}`
+    case "data": return `Context${formulaString(formula.operands[0])}`
+    case "subscript": return `Lookup${formulaString(formula.operands[0])}`
     case "min": case "max":
-      return `${action}( ${formula.dependencies.map(formulaString).join(", ")} )`
-    case "sum":
-      return `( ${formula.dependencies.map(formulaString).join(" + ")} )`
-    case "prod":
-      return `( ${formula.dependencies.map(formulaString).join(" * ")} )`
+      return `${operation}( ${formula.operands.map(formulaString).join(", ")} )`
+    case "add":
+      return `( ${formula.operands.map(formulaString).join(" + ")} )`
+    case "mul":
+      return `( ${formula.operands.map(formulaString).join(" * ")} )`
     case "frac":
-      const [x, c] = formula.dependencies.map(formulaString)
+      const [x, c] = formula.operands.map(formulaString)
       return `( ${x} / ( ${x} + ${c} ) )`
     case "threshold_add":
-      const [value, threshold, addition] = formula.dependencies.map(formulaString)
+      const [value, threshold, addition] = formula.operands.map(formulaString)
       return `( ${value} >= ${threshold} ? ${addition} : 0 )`
     case "res":
-      return `Res${formulaString(formula.dependencies[0])}`
-    default: assertUnreachable(action)
+      return `Res${formulaString(formula.operands[0])}`
+    default: assertUnreachable(operation)
   }
 }

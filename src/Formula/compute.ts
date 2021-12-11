@@ -1,18 +1,18 @@
-import { forEachFormulas } from "./internal"
-import { allActions, optimize } from "./optimization"
-import { Constant, Formula, ReadFormula } from "./type"
+import { forEachNodes } from "./internal"
+import { allOperations, optimize } from "./optimization"
+import { ConstantNode, Node, ReadNode } from "./type"
 
-export function process(_formulas: Formula[]): (lookup: (path: string[]) => number) => number[] {
+export function process(_formulas: Node[]): (lookup: (path: string[]) => number) => number[] {
   const formulas = optimize(_formulas)
 
   const outputLocations = new Map(formulas.map((f, i) => [f, i]))
-  const inputLocations = new Map<ReadFormula, number>()
-  const constantLocations = new Map<Constant, number>()
-  const formulaLocations = new Map<Formula, number>()
-  const outputFromInput = new Map<Formula, number>()
+  const inputLocations = new Map<ReadNode, number>()
+  const constantLocations = new Map<ConstantNode, number>()
+  const formulaLocations = new Map<Node, number>()
+  const outputFromInput = new Map<Node, number>()
 
-  forEachFormulas(formulas, _ => { }, formula => {
-    switch (formula.action) {
+  forEachNodes(formulas, _ => { }, formula => {
+    switch (formula.operation) {
       case "const":
         if (!constantLocations.has(formula))
           constantLocations.set(formula, constantLocations.size + 1)
@@ -52,23 +52,22 @@ export function process(_formulas: Formula[]): (lookup: (path: string[]) => numb
 
   const locations = new Map([...outputLocations, ...inputLocations, ...constantLocations, ...formulaLocations])
   const commands: CompressedFormula[] = [...formulaLocations].map(([formula, outputIndex]) => {
-    let action: ((args: number[]) => number)
-    switch (formula.action) {
-      case "const": case "read": case "context": throw new Error("Unreachable")
+    let operation: ((args: number[]) => number)
+    switch (formula.operation) {
+      case "const": case "read": case "data": throw new Error("Unreachable")
       case "subscript": {
         const list = formula.list
-        action = ([i]) => list[i]
+        operation = ([i]) => list[i]
         break
       }
       default: {
-        const f = allActions[formula.action]
-        action = arg => f(arg)
+        const f = allOperations[formula.operation]
+        operation = arg => f(arg)
       }
     }
     return {
-      outputIndex, action,
-      dependencies: formula.dependencies?.map(dep => locations.get(dep)!)
-        ?? [locations.get(formula.baseFormula!)!]
+      outputIndex, operation,
+      operands: formula.operands.map(dep => locations.get(dep)!)
     }
   })
   const copyArray = [...outputFromInput].map(([output, inputIndex]) =>
@@ -76,8 +75,8 @@ export function process(_formulas: Formula[]): (lookup: (path: string[]) => numb
 
   return lookup => {
     inputs.forEach((path, i) => buffer[i + inputOffset] = lookup(path))
-    commands.forEach(({ outputIndex, action, dependencies }) =>
-      buffer[outputIndex] = action(dependencies.map(i => buffer[i])))
+    commands.forEach(({ outputIndex, operation: operation, operands }) =>
+      buffer[outputIndex] = operation(operands.map(i => buffer[i])))
     copyArray.forEach(([o, i]) => buffer[o] = buffer[i])
     return buffer.slice(0, outputSize)
   }
@@ -85,6 +84,6 @@ export function process(_formulas: Formula[]): (lookup: (path: string[]) => numb
 
 interface CompressedFormula {
   outputIndex: number
-  action: (_: number[]) => number
-  dependencies: number[]
+  operation: (_: number[]) => number
+  operands: number[]
 }

@@ -1,16 +1,16 @@
 import { resolve, assign } from "../Util/KeyPathUtil"
 import { assertUnreachable } from "../Util/Util"
 import { constant, mapContextualFormulas, mapFormulas } from "./internal"
-import { Action, ComputeFormula, Constant, FormulaContext, Formula, Context } from "./type"
+import { Operation, FormulaNode, ConstantNode, FormulaData, Node, Data } from "./type"
 
-const allCommutativeMonoidActions = {
+const allCommutativeMonoidOperations = {
   min: (x: number[]): number => Math.min(...x),
   max: (x: number[]): number => Math.max(...x),
-  sum: (x: number[]): number => x.reduce((a, b) => a + b, 0),
-  prod: (x: number[]): number => x.reduce((a, b) => a * b, 1),
+  add: (x: number[]): number => x.reduce((a, b) => a + b, 0),
+  mul: (x: number[]): number => x.reduce((a, b) => a * b, 1),
 } as const
-export const allActions = {
-  ...allCommutativeMonoidActions,
+export const allOperations = {
+  ...allCommutativeMonoidOperations,
   res: ([res]: number[]): number => {
     if (res < 0) return 1 - res / 2
     else if (res >= 0.75) return 1 / (res * 4 + 1)
@@ -20,9 +20,9 @@ export const allActions = {
   threshold_add: ([value, threshold, addition]: number[]): number => value >= threshold ? addition : 0,
 } as const
 
-const commutativeMonoidActionSet = new Set(Object.keys(allCommutativeMonoidActions) as (Formula["action"])[])
+const commutativeMonoidOperationSet = new Set(Object.keys(allCommutativeMonoidOperations) as (Node["operation"])[])
 
-export function optimize(contextualFormulas: Formula[]): Formula[] {
+export function optimize(contextualFormulas: Node[]): Node[] {
   let formulas = constantFold(contextualFormulas)
   const state = { progress: false }
 
@@ -37,12 +37,12 @@ export function optimize(contextualFormulas: Formula[]): Formula[] {
   return formulas
 }
 
-function findCommonFormulas(formulas: Formula[]): Set<Formula> {
+function findCommonFormulas(formulas: Node[]): Set<Node> {
   // We need to reimplement the `mapFormulas` logic here since `mapFormulas` removes duplicates automatically.
-  const visited = new Set<Formula>(), common = new Set<Formula>()
+  const visited = new Set<Node>(), common = new Set<Node>()
 
-  function check(formula: Formula) {
-    if (!formula.baseFormula && !formula.dependencies) return
+  function check(formula: Node) {
+    if (!formula.operands) return
 
     if (visited.has(formula)) {
       common.add(formula)
@@ -50,28 +50,27 @@ function findCommonFormulas(formulas: Formula[]): Set<Formula> {
     }
     visited.add(formula)
 
-    if (formula.baseFormula) check(formula.baseFormula)
-    formula.dependencies?.forEach(check);
+    formula.operands.forEach(check);
   }
 
   formulas.forEach(check)
   return common
 }
 
-export function flatten(formulas: Formula[], fixedFormulas: Set<Formula>, state: { progress: boolean }): Formula[] {
+export function flatten(formulas: Node[], fixedFormulas: Set<Node>, state: { progress: boolean }): Node[] {
   return mapFormulas(formulas, formula => formula, _formula => {
-    if (!commutativeMonoidActionSet.has(_formula.action)) return _formula
-    const formula = _formula as ComputeFormula
-    const { action } = formula
+    if (!commutativeMonoidOperationSet.has(_formula.operation)) return _formula
+    const formula = _formula as FormulaNode
+    const { operation } = formula
 
     let flattened = false
-    const dependencies = formula.dependencies.flatMap(dep => {
-      return (dep.action === action && !fixedFormulas.has(dep)) ? (flattened = true, dep.dependencies) : [dep]
+    const operands = formula.operands.flatMap(dep => {
+      return (dep.operation === operation && !fixedFormulas.has(dep)) ? (flattened = true, dep.operands) : [dep]
     })
-    return flattened ? (state.progress = true, { ...formula, dependencies }) : formula
+    return flattened ? (state.progress = true, { ...formula, operands }) : formula
   })
 }
-function deduplicate(formulas: Formula[], state: { progress: boolean }): Formula[] {
+function deduplicate(formulas: Node[], state: { progress: boolean }): Node[] {
   function elementCounts<T>(array: T[]): Map<T, number> {
     const result = new Map<T, number>()
     for (const value of array) result.set(value, (result.get(value) ?? 0) + 1)
@@ -82,25 +81,25 @@ function deduplicate(formulas: Formula[], state: { progress: boolean }): Formula
   }
 
   let common = {
-    counts: new Map<Formula, number>(),
-    formulas: new Set<Formula>(),
-    action: "sum" as Action
+    counts: new Map<Node, number>(),
+    formulas: new Set<Node>(),
+    operation: "add" as Operation
   }
 
   while (true) {
     let next: typeof common | undefined
 
-    const factored: ComputeFormula = { action: common.action, dependencies: arrayFromCounts(common.counts) }
+    const factored: FormulaNode = { operation: common.operation, operands: arrayFromCounts(common.counts) }
 
-    let candidatesByAction = new Map<Action, [ComputeFormula, Map<Formula, number>][]>()
-    for (const action of Object.keys(allCommutativeMonoidActions))
-      candidatesByAction.set(action, [])
+    let candidatesByOperation = new Map<Operation, [FormulaNode, Map<Node, number>][]>()
+    for (const operation of Object.keys(allCommutativeMonoidOperations))
+      candidatesByOperation.set(operation, [])
 
     formulas = mapFormulas(formulas, _formula => {
       if (common.formulas.has(_formula)) {
-        const formula = _formula as ComputeFormula
+        const formula = _formula as FormulaNode
         const remainingCounts = new Map(common.counts)
-        const dependencies = formula.dependencies.filter(dep => {
+        const operands = formula.operands.filter(dep => {
           const count = remainingCounts.get(dep)
           if (count) {
             remainingCounts.set(dep, count - 1)
@@ -109,19 +108,19 @@ function deduplicate(formulas: Formula[], state: { progress: boolean }): Formula
           return true
         })
 
-        if (!dependencies.length)
+        if (!operands.length)
           return factored
-        dependencies.push(factored)
-        return { ...formula, dependencies }
+        operands.push(factored)
+        return { ...formula, operands }
       }
       return _formula
     }, _formula => {
-      if (!commutativeMonoidActionSet.has(_formula.action)) return _formula
-      const formula = _formula as ComputeFormula
+      if (!commutativeMonoidOperationSet.has(_formula.operation)) return _formula
+      const formula = _formula as FormulaNode
 
       if (next) {
-        if (next.action === formula.action) {
-          const currentCounts = elementCounts(formula.dependencies), commonCounts = new Map<Formula, number>()
+        if (next.operation === formula.operation) {
+          const currentCounts = elementCounts(formula.operands), commonCounts = new Map<Node, number>()
           const nextCounts = next.counts
           let total = 0
 
@@ -138,13 +137,13 @@ function deduplicate(formulas: Formula[], state: { progress: boolean }): Formula
           }
         }
       } else {
-        const candidates = candidatesByAction.get(formula.action)!
-        const counts = elementCounts(formula.dependencies)
+        const candidates = candidatesByOperation.get(formula.operation)!
+        const counts = elementCounts(formula.operands)
 
         for (const [candidate, candidateCounts] of candidates) {
           let total = 0
 
-          const commonCounts = new Map<Formula, number>()
+          const commonCounts = new Map<Node, number>()
           for (const [dependency, candidateCount] of candidateCounts.entries()) {
             const count = Math.min(candidateCount, counts.get(dependency) ?? 0)
             if (count) {
@@ -156,9 +155,9 @@ function deduplicate(formulas: Formula[], state: { progress: boolean }): Formula
             next = {
               counts: commonCounts,
               formulas: new Set([formula, candidate]),
-              action: formula.action
+              operation: formula.operation
             }
-            candidatesByAction.clear()
+            candidatesByOperation.clear()
             break
           }
         }
@@ -178,20 +177,20 @@ function deduplicate(formulas: Formula[], state: { progress: boolean }): Formula
 }
 
 /**
- * - Apply all `ReadFormula` with corresponding `Context` information
- * - Remove all `ContextFormula`
+ * - Apply all `ReadNode` with corresponding `Context` information
+ * - Remove all `DataNode`
  * - Option bottom-up mapping afterward
  */
-export function applyRead(formulas: Formula[], bottomUpMap: (formula: Formula, orig: Formula) => Formula): Formula[] {
-  const contextsFromId = new Map<number, Context[]>()
-  const contextsById = new Map<Context[], number>()
+export function applyRead(formulas: Node[], bottomUpMap: (formula: Node, orig: Node) => Node): Node[] {
+  const contextsFromId = new Map<number, Data[]>()
+  const contextsById = new Map<Data[], number>()
 
   let currentMaxContextId = 1
 
   return mapContextualFormulas(formulas, (formula, contextId) => {
-    switch (formula.action) {
-      case "context": {
-        const { contexts, baseFormula } = formula
+    switch (formula.operation) {
+      case "data": {
+        const { data: contexts, operands: [baseFormula] } = formula
 
         let nextContextId = contextsById.get(contexts)
         if (nextContextId) return [baseFormula, nextContextId]
@@ -205,58 +204,58 @@ export function applyRead(formulas: Formula[], bottomUpMap: (formula: Formula, o
       case "read": {
         const path = formula.path
         const contexts = contextsFromId.get(contextId)
-        const dependencies = contexts?.flatMap(context => {
+        const operands = contexts?.flatMap(context => {
           const formula = resolve(context.formula, path)
           return formula ? [formula] : []
         })
 
-        if (!dependencies || dependencies.length === 0)
+        if (!operands || operands.length === 0)
           break
         if (formula.accumulation === "unique") {
-          if (dependencies.length > 1)
+          if (operands.length > 1)
             throw new Error("Duplicate entries in unique read")
-          return [dependencies[0], contextId]
+          return [operands[0], contextId]
         }
 
-        return [{ ...formula, action: formula.accumulation, dependencies }, contextId]
+        return [{ ...formula, operation: formula.accumulation, operands }, contextId]
       }
     }
     return [formula, contextId]
   }, bottomUpMap)
 }
 
-/** Apply `ReadFormula`, remove all `ContextFormula` and replace all known values with a constant */
-export function constantFold(formulas: Formula[]): Formula[] {
-  const readFormulas: FormulaContext = {}
+/** Apply `ReadNode`, remove all `DataNode` and replace all known values with a constant */
+export function constantFold(formulas: Node[]): Node[] {
+  const readNodes: FormulaData = {}
 
   return applyRead(formulas, formula => {
-    const { action } = formula
-    switch (action) {
+    const { operation } = formula
+    switch (operation) {
       case "const": return formula
       case "read":
-        const prev = resolve(readFormulas, formula.path)
+        const prev = resolve(readNodes, formula.path)
         if (prev) return prev
-        assign(readFormulas, formula.path, formula)
+        assign(readNodes, formula.path, formula)
         return formula
-      case "context": throw new Error("Unreachable")
+      case "data": throw new Error("Unreachable")
       case "subscript":
-        const baseFormula = formula.baseFormula
-        if (baseFormula.action === "const")
+        const [baseFormula] = formula.operands
+        if (baseFormula.operation === "const")
           return constant(formula.list[baseFormula.value], formula.info)
         return formula
       case "threshold_add":
-        const [value, threshold, addition] = formula.dependencies
-        if (value.action === "const" && threshold.action === "const")
+        const [value, threshold, addition] = formula.operands
+        if (value.operation === "const" && threshold.operation === "const")
           return value.value >= threshold.value ? addition : constant(0)
         break
-      case "min": case "max": case "sum": case "prod":
-        const f: (_: number[]) => number = allActions[action]
-        const numericDependencies: number[] = []
-        const formulaDependencies: Formula[] = formula.dependencies.filter(formula =>
-          (formula.action !== "const") ? true : (numericDependencies.push(formula.value), false))
-        const numericValue = f(numericDependencies)
+      case "min": case "max": case "add": case "mul":
+        const f: (_: number[]) => number = allOperations[operation]
+        const numericOperands: number[] = []
+        const formulaOperands: Node[] = formula.operands.filter(formula =>
+          (formula.operation !== "const") ? true : (numericOperands.push(formula.value), false))
+        const numericValue = f(numericOperands)
 
-        if (action === "prod" && numericValue === 0)
+        if (operation === "mul" && numericValue === 0)
           // The only (practical) degenerate cases is
           //
           //  -  0 * ... = 0
@@ -272,16 +271,16 @@ export function constantFold(formulas: Formula[]): Formula[] {
           return constant(0)
 
         if (numericValue !== f([])) // Skip vacuous numeric
-          formulaDependencies.push(constant(numericValue))
-        if (formulaDependencies.length <= 1)
-          return formulaDependencies[0] ?? constant(f([]))
-        return { ...formula, dependencies: formulaDependencies }
+          formulaOperands.push(constant(numericValue))
+        if (formulaOperands.length <= 1)
+          return formulaOperands[0] ?? constant(f([]))
+        return { ...formula, operands: formulaOperands }
       case "frac": case "res": break
-      default: assertUnreachable(action) // Exhaustive switch
+      default: assertUnreachable(operation) // Exhaustive switch
     }
-    if (formula.dependencies.every(({ action }) => action === "const")) {
-      const dependencies = (formula.dependencies as Constant[]).map(({ value }) => value)
-      return constant(allActions[action](dependencies))
+    if (formula.operands.every(({ operation }) => operation === "const")) {
+      const operands = (formula.operands as ConstantNode[]).map(({ value }) => value)
+      return constant(allOperations[operation](operands))
     }
     return formula
   })

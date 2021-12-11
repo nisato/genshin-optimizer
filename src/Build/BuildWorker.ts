@@ -2,7 +2,7 @@ import '../WorkerHack'
 import { ICachedArtifact } from '../Types/artifact';
 import { allArtifactSets, ArtifactSetKey, SlotKey } from '../Types/consts';
 import { iterate, prune, isSatisfiable } from './iterate'
-import { Formula } from '../Formula/type';
+import { Node } from '../Formula/type';
 import { constantFold } from '../Formula/optimization';
 import { process } from '../Formula/compute';
 import { SetFilter } from '../Types/Build';
@@ -93,20 +93,20 @@ onmessage = async ({ data }: { data: BuildRequest }) => {
   }, undefined as any)
 }
 
-export function prepareFormula(formulas: Formula[], setsToKeep: Map<ArtifactSetKey, number>): { formulas: Formula[], thresholds: Map<ArtifactSetKey, Set<number>> } {
+export function prepareFormula(formulas: Node[], setsToKeep: Map<ArtifactSetKey, number>): { formulas: Node[], thresholds: Map<ArtifactSetKey, Set<number>> } {
   const thresholds = new Map<ArtifactSetKey, Set<number>>()
   formulas = mapFormulas(formulas, f => {
-    if (f.action === "read") {
+    if (f.operation === "read") {
       // We have nothing to apply non-generation values at this point.
-      if (f.path[0] !== "generation") return { action: "const", value: 0 }
-      return { action: "read", accumulation: "unique", path: f.path.slice(1) }
-    } else if (f.action === "threshold_add") {
-      const [value, threshold, _] = f.dependencies
-      if (value.action === "read" && threshold.action === "const") {
+      if (f.path[0] !== "generation") return { operation: "const", value: 0, operands: [] }
+      return { operation: "read", accumulation: "unique", path: f.path.slice(1), operands: [] }
+    } else if (f.operation === "threshold_add") {
+      const [value, threshold, _] = f.operands
+      if (value.operation === "read" && threshold.operation === "const") {
         const set = value.path[0] as any
         if (allArtifactSets.includes(set)) {
           if (!isSatisfiable(new Map([[set, threshold.value]]), setsToKeep))
-            return { action: "const", value: 0 }
+            return { operation: "const", value: 0, operands: [] }
 
           if (!thresholds.has(set)) thresholds.set(set, new Set())
           thresholds.get(set)!.add(threshold.value)
@@ -122,8 +122,8 @@ export function prepareFormula(formulas: Formula[], setsToKeep: Map<ArtifactSetK
 export interface BuildRequest {
   splitArtifacts: StrictDict<SlotKey, ICachedArtifact[]>
   setFilters: SetFilter
-  minFilters: { formula: Formula, value: number }[],
+  minFilters: { formula: Node, value: number }[],
   maxBuildsToShow: number,
-  optimizationTarget: Formula,
-  plotBase?: Formula
+  optimizationTarget: Node,
+  plotBase?: Node
 }

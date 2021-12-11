@@ -1,53 +1,53 @@
 
 import { objectFromKeyMap } from "../Util/Util"
-import type { CommutativeMonoidActions, ComputeFormula, Context, ContextFormula, Formula, Info, ReaderSpec, ReaderSpecNode, ReadFormula, SubscriptFormula } from "./type"
+import type { FormulaNode, Data, DataNode, Node, Info, ReaderSpec, ReaderSpecNode, ReadNode, SubscriptNode } from "./type"
 
-export const todo: Formula = { action: "const", value: NaN }
+export const todo: Node = { operation: "const", value: NaN, operands: [] }
 
 /** min( x1, x2, ... ) */
-export function min(...values: (number | Formula)[]): ComputeFormula {
-  return { action: "min", dependencies: intoDependencies(values) }
+export function min(...values: (number | Node)[]): FormulaNode {
+  return { operation: "min", operands: intoOperands(values) }
 }
 /** max( x1, x2, ... ) */
-export function max(...values: (number | Formula)[]): ComputeFormula {
-  return { action: "max", dependencies: intoDependencies(values) }
+export function max(...values: (number | Node)[]): FormulaNode {
+  return { operation: "max", operands: intoOperands(values) }
 }
 /** x1 + x2 + ... */
-export function sum(...values: (number | Formula)[]): ComputeFormula {
-  return { action: "sum", dependencies: intoDependencies(values) }
+export function sum(...values: (number | Node)[]): FormulaNode {
+  return { operation: "add", operands: intoOperands(values) }
 }
 /** x1 * x2 * ... */
-export function prod(...values: (number | Formula)[]): ComputeFormula {
-  return { action: "prod", dependencies: intoDependencies(values) }
+export function prod(...values: (number | Node)[]): FormulaNode {
+  return { operation: "mul", operands: intoOperands(values) }
 }
 /** x / (x + c) */
-export function frac(x: number | Formula, c: number | Formula): ComputeFormula {
-  return { action: "frac", dependencies: intoDependencies([x, c]) }
+export function frac(x: number | Node, c: number | Node): FormulaNode {
+  return { operation: "frac", operands: intoOperands([x, c]) }
 }
 /** threshold >= value ? addition : 0 */
-export function threshold_add(value: Formula, threshold: number | Formula, addition: number | Formula): ComputeFormula {
-  return { action: "threshold_add", dependencies: intoDependencies([value, threshold, addition]) }
+export function threshold_add(value: Node, threshold: number | Node, addition: number | Node): FormulaNode {
+  return { operation: "threshold_add", operands: intoOperands([value, threshold, addition]) }
 }
 /** list[index] */
-export function subscript(index: Formula, list: number[], info?: Info): SubscriptFormula {
+export function subscript(index: Node, list: number[], info?: Info): SubscriptNode {
   if (list.some((value, i, array) => i !== 0 && array[i - 1] > value))
     // We use this fact primarily for *diffing*
     throw new Error("Formula Construction Failure: subscription list must be sorted in ascending order")
-  return { action: "subscript", baseFormula: index, list, info }
+  return { operation: "subscript", operands: [index], list, info }
 }
-export function res(base: number | Formula): ComputeFormula {
-  return { action: "res", dependencies: intoDependencies([base]) }
+export function res(base: number | Node): FormulaNode {
+  return { operation: "res", operands: intoOperands([base]) }
 }
 
-export function makeReaders<T extends ReaderSpecNode>(context: T, prefix: string[] = []): ReaderSpec<T, ReadFormula> {
+export function makeReaders<T extends ReaderSpecNode>(context: T, prefix: string[] = []): ReaderSpec<T, ReadNode> {
   return typeof context === "string"
-    ? { action: "read", accumulation: context, path: prefix }
+    ? { operation: "read", accumulation: context, path: prefix, operands: [] }
     : objectFromKeyMap(Object.keys(context) as string[], key => makeReaders(context[key], [...prefix, key])) as any
 }
-export function context(baseFormula: Formula, contexts: Context[]): ContextFormula {
-  return { action: "context", baseFormula, contexts }
+export function data(baseFormula: Node, contexts: Data[]): DataNode {
+  return { operation: "data", operands: [baseFormula], data: contexts }
 }
 
-function intoDependencies(values: (number | Formula)[]): Formula[] {
-  return values.map(value => typeof value === "number" ? { action: "const", value } : value)
+function intoOperands(values: (number | Node)[]): Node[] {
+  return values.map(value => typeof value === "number" ? { operation: "const", value, operands: [] } : value)
 }

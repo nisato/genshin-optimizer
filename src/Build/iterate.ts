@@ -1,11 +1,11 @@
 import type { ICachedArtifact, MainStatKey, SubstatKey } from "../Types/artifact"
 import { allArtifactSets, ArtifactSetKey, SlotKey } from "../Types/consts"
 import { finiteDifference } from "../Formula/difference"
-import type { Formula } from "../Formula/type"
+import type { Node } from "../Formula/type"
 import { process } from "../Formula/compute"
-import { forEachFormulas } from "../Formula/internal"
+import { forEachNodes } from "../Formula/internal"
 
-export function prune(artifactBySlots: StrictDict<SlotKey, ICachedArtifact[]>, formulas: Formula[], setsToKeep: SetCount, thresholds: Map<ArtifactSetKey, Set<number>>, numKeep: number): EntriesBySetID[/* slots */] {
+export function prune(artifactBySlots: StrictDict<SlotKey, ICachedArtifact[]>, formulas: Node[], setsToKeep: SetCount, thresholds: Map<ArtifactSetKey, Set<number>>, numKeep: number): EntriesBySetID[/* slots */] {
   const diffFormulas = finiteDifference(formulas, path => !allArtifactSets.includes(path[0] as any))
   let diff: (values: ArtifactStat) => number[]
   {
