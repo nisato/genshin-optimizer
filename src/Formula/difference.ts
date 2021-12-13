@@ -74,6 +74,8 @@ export function finiteDifference(formulas: Node[], useDiff: (path: string[]) => 
         addSign(value, -sign)
         break
       }
+      case "string": case "stringSubscript":
+        throw new Error(`Found unsupported ${operation} node when computing finite difference`);
       default: assertUnreachable(operation)
     }
 
@@ -145,6 +147,8 @@ export function finiteDifference(formulas: Node[], useDiff: (path: string[]) => 
         // This (break) assumes that every dependency of "prod" is positive.
         break
       }
+      case "string": case "stringSubscript":
+        throw new Error(`Found unsupported ${operation} node when computing finite difference`);
       default: assertUnreachable(operation)
     }
 

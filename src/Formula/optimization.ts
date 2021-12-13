@@ -231,18 +231,28 @@ export function constantFold(formulas: Node[]): Node[] {
   return applyRead(formulas, formula => {
     const { operation } = formula
     switch (operation) {
-      case "const": return formula
+      case "const": case "string": return formula
       case "read":
         const prev = resolve(readNodes, formula.path)
         if (prev) return prev
         assign(readNodes, formula.path, formula)
         return formula
       case "data": throw new Error("Unreachable")
-      case "subscript":
+      case "subscript": {
         const [baseFormula] = formula.operands
         if (baseFormula.operation === "const")
           return constant(formula.list[baseFormula.value], formula.info)
         return formula
+      }
+      case "stringSubscript": {
+        const [baseFormula] = formula.operands
+        if (baseFormula.operation === "string") {
+          let result = formula.list[baseFormula.value]
+          if (!result) throw new Error(`Unknown string ${baseFormula.value} when folding \`StringSubscriptNode\``);
+          return result
+        }
+        return formula
+      }
       case "threshold_add":
         const [value, threshold, addition] = formula.operands
         if (value.operation === "const" && threshold.operation === "const")

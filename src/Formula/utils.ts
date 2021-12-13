@@ -1,8 +1,12 @@
 
 import { objectFromKeyMap } from "../Util/Util"
-import type { FormulaNode, Data, DataNode, Node, Info, ReaderSpec, ReaderSpecNode, ReadNode, SubscriptNode } from "./type"
+import type { FormulaNode, Data, DataNode, Node, Info, ReaderSpec, ReaderSpecNode, ReadNode, SubscriptNode, ConstantNode, StringNode, StringSubscriptNode } from "./type"
 
 export const todo: Node = { operation: "const", value: NaN, operands: [] }
+
+export function stringConstant(value: string): StringNode {
+  return { operation: "string", value, operands: [] }
+}
 
 /** min( x1, x2, ... ) */
 export function min(...values: (number | Node)[]): FormulaNode {
@@ -35,6 +39,11 @@ export function subscript(index: Node, list: number[], info?: Info): SubscriptNo
     throw new Error("Formula Construction Failure: subscription list must be sorted in ascending order")
   return { operation: "subscript", operands: [index], list, info }
 }
+/** list[index] */
+export function stringSubscript(index: Node, list: Dict<string, Node>): StringSubscriptNode {
+  return { operation: "stringSubscript", list, operands: [index] }
+}
+
 export function res(base: number | Node): FormulaNode {
   return { operation: "res", operands: intoOperands([base]) }
 }

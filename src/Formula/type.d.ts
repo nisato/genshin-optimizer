@@ -1,7 +1,7 @@
 import { ElementKey, ReactionModeKey } from "../Types/consts"
 import type { Path } from "../Util/KeyPathUtil"
 
-export type Node = ConstantNode | ReadNode | FormulaNode | SubscriptNode | DataNode
+export type Node = ConstantNode | ReadNode | FormulaNode | SubscriptNode | DataNode | StringNode | StringSubscriptNode
 
 interface NodeBase {
   operands: Node[]
@@ -13,11 +13,20 @@ export interface ConstantNode extends NodeBase {
 
   info?: Info
 }
+export interface StringNode extends NodeBase {
+  operation: "string"
+  value: string
+}
+
 export interface SubscriptNode extends NodeBase {
   operation: "subscript"
   list: number[]
 
   info?: Info
+}
+export interface StringSubscriptNode extends NodeBase {
+  operation: "stringSubscript"
+  list: Dict<string, Node>
 }
 
 export interface ReadNode extends NodeBase {

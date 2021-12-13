@@ -8,7 +8,7 @@ import { frac, makeReaders, prod, res, subscript, sum, min, max } from "./utils"
 const allStats = [...allMainStatKeys, ...allSubstats] as const
 const unit: ConstantNode = { operation: "const", value: 1, info: { unit: "%" }, operands: [] }
 
-const readerSpec = Object.freeze({
+const readerSpec = {
   base: objectFromKeyMap(["atk", "def", "hp"] as const, _ => "add" as const),
   premod: objectFromKeyMap(allStats, _ => "add" as const),
   postmod: objectFromKeyMap(allStats, _ => "add" as const),
@@ -34,14 +34,14 @@ const readerSpec = Object.freeze({
     lvlMulti: "unique",
   },
   enemy: { baseRes: "add", level: "unique", res: "add", def: "add", defRed: "add", },
-} as const)
+} as const
 
 const input = makeReaders(readerSpec)
 const { base, premod, postmod, char, hit, trans, enemy, } = input
 
 const common = {
   premod: objectFromKeyMap(["atk", "def", "hp"] as const,
-    key => prod(base[key], postmod[`${key}_` as const])),
+    key => prod(base[key], premod[`${key}_` as const])),
   postmod: objectFromKeyMap(allStats,
     key => premod[key]),
 
@@ -55,7 +55,8 @@ const common = {
     dmg: prod(hit.base, sum(unit, hit.dmgBonus), hit.crit.value, enemy.def, enemy.res, hit.amp.multi),
     crit: {
       rate: max(min(postmod.critRate_, unit), 0),
-      avg: sum(1, prod(hit.crit.rate, postmod.critDMG_))
+      dmg: sum(1, postmod.critDMG_),
+      avg: sum(1, prod(hit.crit.rate, postmod.critDMG_)),
     },
     amp: {
       multi: prod(hit.amp.reactionMulti, hit.amp.base),

@@ -24,7 +24,8 @@ export function process(_formulas: Node[]): (lookup: (path: string[]) => number)
           outputFromInput.set(formula, index)
         break
       }
-
+      case "string": case "stringSubscript":
+        throw new Error(`Found ${formula.operation} node while processing formulas`)
       default:
         const index = outputLocations.get(formula) ?? (formulaLocations.size + 1)
         formulaLocations.set(formula, index)
