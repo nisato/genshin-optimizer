@@ -57,7 +57,7 @@ onmessage = async (e: { data: BuildRequest }) => {
     newCount = calculateTotalBuildNumber(prunedArtifacts, setFilters)
   }
 
-  let buildCount = 0, skipped = oldCount - newCount, workerTime = 0
+  let buildCount = 0, skipped = oldCount - newCount, workersTime = 0
   let builds: Build[] = []
   const plotDataMap: Dict<string, number> = {}
   let bucketSize = 0.01
@@ -86,10 +86,25 @@ onmessage = async (e: { data: BuildRequest }) => {
   }, "flower") as unknown as ArtifactSlotKey
 
   const maxWorkers = navigator.hardwareConcurrency || 4
-  const workers = [...Array(maxWorkers).keys()].map(workerIndex => {
-    return new Promise((resolve) => {
-      const worker = new Worker()
-      worker.onmessage = ({ data }) => {
+  let workIndex = 0
+
+  /**
+   * Rudimentary thread pool implementation.
+   * Only create the worker is there is actual work to do.
+   * Once a worker finished one "workerIndex", it tries to move onto another one.
+   */
+  function WorkerWorker(worker: Worker | null, workerIndex: number) {
+    return new Promise<Worker | null>((resolve) => {
+      const localWorkIndex = workIndex
+      if (localWorkIndex >= prunedArtifacts[leastSlot]!.length) {
+        // console.log(workerIndex, "completed", performance.now() - t1);
+        return resolve(worker)
+      }
+      const workInSlot = prunedArtifacts[leastSlot]![localWorkIndex]!
+      const workPrunedArtifacts = { ...prunedArtifacts, [leastSlot]: [workInSlot] }
+      const data = { dependencies, initialStats: stats, maxBuildsToShow, minFilters, optimizationTarget, plotBase, prunedArtifacts: workPrunedArtifacts, setFilters, artifactSetEffects }
+      if (!worker) worker = new Worker()
+      worker.onmessage = async ({ data }) => {
         if (data.buildCount) {
           const { buildCount: workerCount, builds: workerbuilds } = data
           buildCount += workerCount
@@ -101,19 +116,25 @@ onmessage = async (e: { data: BuildRequest }) => {
             plotDataMap[index] = Math.max(value, plotDataMap[index] ?? -Infinity))
         }
         if (data.timing)
-          workerTime += data.timing
-        postMessage({ progress: buildCount, timing: performance.now() - t1, skipped }, undefined as any)
-        if (data.finished)
-          resolve(worker)
+          workersTime += data.timing
+        if (data.finished) {
+          // console.log("WORKER", workerIndex, "finished", localWorkIndex)
+          resolve(await WorkerWorker(worker, workerIndex))
+        }
       }
-      const { [leastSlot]: leastArr, ...rest } = prunedArtifacts
-      const leastArrFiltered = leastArr?.filter((a, i) => (i % maxWorkers) === workerIndex)
-      worker.postMessage({ dependencies, initialStats: stats, maxBuildsToShow, minFilters, optimizationTarget, plotBase, prunedArtifacts: { [leastSlot]: leastArrFiltered, ...rest }, setFilters, artifactSetEffects })
+      // console.log("WORKER", workerIndex, "starting on", localWorkIndex)
+      worker.postMessage(data)
+      workIndex++
     })
-  })
-  const finWorkers = await Promise.all(workers)
-  finWorkers.forEach(w => (w as any).terminate())
+  }
 
+  const workers = [...Array(maxWorkers).keys()].map(i => WorkerWorker(null, i))
+  const timer = setInterval(() => {
+    postMessage({ progress: buildCount, timing: performance.now() - t1, skipped }, undefined as any)
+  }, 100)
+  const finWorkers = await Promise.all(workers)
+  finWorkers.forEach(w => (w as any)?.terminate())
+  clearInterval(timer)
   cleanupBuilds()
   cleanupPlots()
   const t2 = performance.now()
