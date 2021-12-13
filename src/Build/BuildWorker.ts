@@ -1,13 +1,15 @@
-import '../WorkerHack'
-import { artifactSetPermutations, artifactPermutations, pruneArtifacts, calculateTotalBuildNumber } from "./Build"
-import { GetDependencies } from '../StatDependency';
+import { ArtifactSlotKey } from 'pipeline';
+// eslint-disable-next-line
+import Worker from "worker-loader!./BuildWorkerWorker";
 import Formula from '../Formula';
-import { ICachedArtifact, StatKey } from '../Types/artifact';
-import { ArtifactSetKey, SetNum, SlotKey } from '../Types/consts';
+import { GetDependencies } from '../StatDependency';
+import { StatKey } from '../Types/artifact';
 import { Build, BuildRequest, SetFilter } from '../Types/Build';
-import { BonusStats, ICalculatedStats } from '../Types/stats';
+import { ArtifactSetKey, SetNum, SlotKey } from '../Types/consts';
+import { BonusStats } from '../Types/stats';
 import { mergeStats } from '../Util/StatUtil';
-import { PreprocessFormulas } from '../ProcessFormula';
+import '../WorkerHack';
+import { calculateTotalBuildNumber, pruneArtifacts } from "./Build";
 
 const plotMaxPoints = 1500
 
@@ -61,9 +63,8 @@ onmessage = async (e: { data: BuildRequest }) => {
     newCount = calculateTotalBuildNumber(prunedArtifacts, setFilters)
   }
 
-  let { initialStats, formula } = PreprocessFormulas(dependencies, stats, false)
-  let buildCount = 0, skipped = oldCount - newCount
-  let builds: Build[] = [], threshold = -Infinity
+  let buildCount = 0, skipped = oldCount - newCount, workerTime = 0
+  let builds: Build[] = []
   const plotDataMap: Dict<string, number> = {}
   let bucketSize = 0.01
 
@@ -85,35 +86,42 @@ onmessage = async (e: { data: BuildRequest }) => {
     }
   }
 
-  const callback = (accu: StrictDict<SlotKey, ICachedArtifact>, stats: ICalculatedStats) => {
-    if (!(++buildCount % 10000)) {
-      if (builds.length > 10000) {
-        cleanupBuilds()
-        threshold = builds[builds.length - 1].buildFilterVal
+  // Find the slot in the pruned artifacts with the lowest number of artifacts
+  const leastSlot = Object.entries(prunedArtifacts).reduce((lowestKey, [key, arr]) => {
+    return prunedArtifacts[key]!.length < prunedArtifacts[lowestKey].length ? key : lowestKey
+  }, "flower") as unknown as ArtifactSlotKey
+
+  const maxWorkers = (navigator.hardwareConcurrency || 4) - 1;
+  const workers = [...Array(maxWorkers).keys()].map(workerIndex => {
+    return new Promise((resolve) => {
+      console.log("start worker", workerIndex)
+      const worker = new Worker()
+      worker.onmessage = ({ data }) => {
+        if (data.buildCount) {
+          const { buildCount: workerCount, builds: workerbuilds, plotDataMap: workerPlotDataMap } = data
+          buildCount += workerCount
+          if (workerbuilds.length)
+            builds = builds.concat(workerbuilds)
+
+          Object.entries(workerPlotDataMap as object).forEach(([index, value]) =>
+            plotDataMap[index] = Math.max(value, plotDataMap[index] ?? -Infinity))
+        }
+        if (data.timing)
+          workerTime += data.timing
+        postMessage({ progress: buildCount, timing: performance.now() - t1, skipped }, undefined as any)
+        if (data.finished)
+          resolve(worker)
       }
-      cleanupPlots()
-      postMessage({ progress: buildCount, timing: performance.now() - t1, skipped }, undefined as any)
-    }
-
-    formula(stats)
-    if (Object.entries(minFilters).some(([key, minimum]) => stats[key] < minimum)) return
-    const buildFilterVal = target(stats)
-
-    if (plotBase) {
-      const index = Math.round(stats[plotBase] / bucketSize)
-      plotDataMap[index] = Math.max(buildFilterVal, plotDataMap[index] ?? -Infinity)
-    }
-
-    if (buildFilterVal >= threshold)
-      builds.push({ buildFilterVal, artifacts: { ...accu } })
-  }
-
-  for (const artifactsBySlot of artifactSetPermutations(prunedArtifacts, setFilters))
-    artifactPermutations(initialStats, artifactsBySlot, artifactSetEffects, callback)
+      const { [leastSlot]: leastArr, ...rest } = prunedArtifacts
+      const leastArrFiltered = leastArr?.filter((a, i) => (i % maxWorkers) === workerIndex)
+      worker.postMessage({ dependencies, initialStats: stats, maxBuildsToShow, minFilters, optimizationTarget, plotBase, prunedArtifacts: { [leastSlot]: leastArrFiltered, ...rest }, setFilters, artifactSetEffects })
+    })
+  })
+  const finWorkers = await Promise.all(workers)
+  finWorkers.forEach(w => (w as any).terminate())
 
   cleanupBuilds()
   cleanupPlots()
-
   const t2 = performance.now()
 
   const plotData = plotBase
@@ -121,7 +129,6 @@ onmessage = async (e: { data: BuildRequest }) => {
       .map(([plotBase, optimizationTarget]) => ({ plotBase: parseInt(plotBase) * bucketSize, optimizationTarget }))
       .sort((a, b) => a.plotBase - b.plotBase)
     : undefined
-
   postMessage({ progress: buildCount, timing: t2 - t1, skipped }, undefined as any)
   postMessage({ builds, plotData, timing: t2 - t1, skipped }, undefined as any)
 }
