@@ -56,8 +56,9 @@ onmessage = async (e: { data: BuildRequest }) => {
       [key, pruneArtifacts(values, artifactSetEffects, new Set(dependencies), stats, maxBuildsToShow, new Set(alwaysAccepted))]))
     newCount = calculateTotalBuildNumber(prunedArtifacts, setFilters)
   }
-
-  let buildCount = 0, skipped = oldCount - newCount, workersTime = 0
+  const skipped = oldCount - newCount
+  postMessage({ skipped }, undefined as any)
+  let buildCount = 0, workersTime = 0
   let builds: Build[] = []
   const plotDataMap: Dict<string, number> = {}
   let bucketSize = 0.01
@@ -80,12 +81,16 @@ onmessage = async (e: { data: BuildRequest }) => {
     }
   }
 
-  // Find the slot in the pruned artifacts with the lowest number of artifacts
-  const leastSlot = Object.entries(prunedArtifacts).reduce((lowestKey, [key, arr]) => {
-    return prunedArtifacts[key]!.length < prunedArtifacts[lowestKey].length ? key : lowestKey
-  }, "flower") as unknown as ArtifactSlotKey
-
   const maxWorkers = navigator.hardwareConcurrency || 4
+
+  /**
+   * Find the slot in the pruned artifacts with the lowest number of artifacts that are >= maxWorkers.
+   * This makes sure that it wont have a case where there is only one artifact of a slot, that ultimately makes this single-threaded.
+   */
+  const leastSlot = Object.entries(prunedArtifacts).reduce((lowestKey, [key, arr]) =>
+    (arr.length >= maxWorkers && arr.length < prunedArtifacts[lowestKey].length) ? key : lowestKey
+    , "flower") as unknown as ArtifactSlotKey
+
   let workIndex = 0
 
   /**
@@ -130,7 +135,7 @@ onmessage = async (e: { data: BuildRequest }) => {
 
   const workers = [...Array(maxWorkers).keys()].map(i => WorkerWorker(null, i))
   const timer = setInterval(() => {
-    postMessage({ progress: buildCount, timing: performance.now() - t1, skipped }, undefined as any)
+    postMessage({ buildCount, timing: performance.now() - t1, workersTime }, undefined as any)
   }, 100)
   const finWorkers = await Promise.all(workers)
   finWorkers.forEach(w => (w as any)?.terminate())
@@ -144,8 +149,7 @@ onmessage = async (e: { data: BuildRequest }) => {
       .map(([plotBase, optimizationTarget]) => ({ plotBase: parseInt(plotBase) * bucketSize, optimizationTarget }))
       .sort((a, b) => a.plotBase - b.plotBase)
     : undefined
-  postMessage({ progress: buildCount, timing: t2 - t1, skipped }, undefined as any)
-  postMessage({ builds, plotData, timing: t2 - t1, skipped }, undefined as any)
+  postMessage({ buildCount, builds, plotData, timing: t2 - t1, workersTime, finish: true }, undefined as any)
 }
 
 function canApply(set: ArtifactSetKey, num: SetNum, setBySlot: Dict<SlotKey, Set<ArtifactSetKey>>, filters: SetFilter): boolean {

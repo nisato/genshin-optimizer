@@ -13,7 +13,7 @@ export interface BuildSetting {
     goblet: MainStatKey[],
     circlet: MainStatKey[]
   },
-  optimizationTarget: string[] | string,
+  optimizationTarget: string[] | string | "",
   mainStatAssumptionLevel: number,
   useExcludedArts: boolean,
   useEquippedArts: boolean,
