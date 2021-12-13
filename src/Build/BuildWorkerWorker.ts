@@ -1,10 +1,10 @@
+import '../WorkerHack';
 import Formula from '../Formula';
 import { PreprocessFormulas } from '../ProcessFormula';
 import { ICachedArtifact } from '../Types/artifact';
 import { Build, BuildWorkerWorkerRequest } from '../Types/Build';
 import { SlotKey } from '../Types/consts';
 import { ICalculatedStats } from '../Types/stats';
-import '../WorkerHack';
 import { artifactPermutations, artifactSetPermutations } from "./Build";
 
 onmessage = async (e: { data: BuildWorkerWorkerRequest }) => {
@@ -44,9 +44,8 @@ onmessage = async (e: { data: BuildWorkerWorkerRequest }) => {
     if (builds.length)
       threshold = builds[builds.length - 1].buildFilterVal
     const t2 = performance.now()
-    postMessage({ buildCount, builds, plotDataMap, timing: t2 - t1 }, undefined as any)
+    postMessage({ buildCount, builds, timing: t2 - t1 }, undefined as any)
     builds = []
-    plotDataMap = {}
     buildCount = 0
     t1 = t2
   }
@@ -73,5 +72,5 @@ onmessage = async (e: { data: BuildWorkerWorkerRequest }) => {
   sendUpdate()
   const t2 = performance.now()
 
-  postMessage({ timing: t2 - t1, finished: true }, undefined as any)
+  postMessage({ timing: t2 - t1, finished: true, plotDataMap }, undefined as any)
 }

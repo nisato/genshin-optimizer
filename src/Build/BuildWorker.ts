@@ -1,4 +1,5 @@
 import { ArtifactSlotKey } from 'pipeline';
+import '../WorkerHack';
 // eslint-disable-next-line
 import Worker from "worker-loader!./BuildWorkerWorker";
 import Formula from '../Formula';
@@ -8,7 +9,6 @@ import { Build, BuildRequest, SetFilter } from '../Types/Build';
 import { ArtifactSetKey, SetNum, SlotKey } from '../Types/consts';
 import { BonusStats } from '../Types/stats';
 import { mergeStats } from '../Util/StatUtil';
-import '../WorkerHack';
 import { calculateTotalBuildNumber, pruneArtifacts } from "./Build";
 
 const plotMaxPoints = 1500
@@ -17,23 +17,17 @@ onmessage = async (e: { data: BuildRequest }) => {
   const t1 = performance.now()
   const { splitArtifacts, setFilters, minFilters = {}, initialStats: stats, artifactSetEffects, maxBuildsToShow, optimizationTarget, plotBase } = e.data
 
-  let target: (stats) => number, targetKeys: string[]
+  let targetKeys: string[]
   if (typeof optimizationTarget === "string") {
-    target = (stats) => stats[optimizationTarget]
     targetKeys = [optimizationTarget]
   } else {
     const targetFormula = await Formula.get(optimizationTarget)
     if (typeof targetFormula === "function")
-      [target, targetKeys] = targetFormula(stats)
+      [, targetKeys] = targetFormula(stats)
     else {
       postMessage({ progress: 0, timing: 0 }, undefined as any)
       postMessage({ builds: [], timing: 0 }, undefined as any)
       return
-    }
-    if (targetKeys.length === 1 && !plotBase) {
-      // CAUTION: This optimization works only with monotonic dependencies
-      const key = targetKeys[0]
-      target = (stats) => stats[key]
     }
   }
 
@@ -91,18 +85,18 @@ onmessage = async (e: { data: BuildRequest }) => {
     return prunedArtifacts[key]!.length < prunedArtifacts[lowestKey].length ? key : lowestKey
   }, "flower") as unknown as ArtifactSlotKey
 
-  const maxWorkers = (navigator.hardwareConcurrency || 4) - 1;
+  const maxWorkers = navigator.hardwareConcurrency || 4
   const workers = [...Array(maxWorkers).keys()].map(workerIndex => {
     return new Promise((resolve) => {
-      console.log("start worker", workerIndex)
       const worker = new Worker()
       worker.onmessage = ({ data }) => {
         if (data.buildCount) {
-          const { buildCount: workerCount, builds: workerbuilds, plotDataMap: workerPlotDataMap } = data
+          const { buildCount: workerCount, builds: workerbuilds } = data
           buildCount += workerCount
-          if (workerbuilds.length)
-            builds = builds.concat(workerbuilds)
-
+          if (workerbuilds.length) builds = builds.concat(workerbuilds)
+        }
+        if (data.plotDataMap) {
+          const { plotDataMap: workerPlotDataMap } = data
           Object.entries(workerPlotDataMap as object).forEach(([index, value]) =>
             plotDataMap[index] = Math.max(value, plotDataMap[index] ?? -Infinity))
         }
